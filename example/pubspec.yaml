@@ -1,0 +1,22 @@
+name: vit_multi_pane_example
+description: "Example app for the vit_multi_pane package."
+publish_to: none
+version: 0.1.0
+
+environment:
+  sdk: ^3.12.2
+  flutter: ">=1.17.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  vit_multi_pane:
+    path: ../
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
