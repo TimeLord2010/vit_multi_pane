@@ -16,7 +16,3 @@
 * **Adicionado** `VitMultiPaneView.dividerHitWidth`: divisórias finas
   continuam fáceis de arrastar — a área de clique é maior que a linha
   visível. No desktop, o cursor muda ao passar sobre a divisória.
-
-## 0.0.1
-
-* TODO: Describe initial release.
