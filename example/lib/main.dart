@@ -21,7 +21,7 @@ class VitMultiPaneExampleApp extends StatelessWidget {
   }
 }
 
-enum _Action { add, replace, remove, next }
+enum _Action { add, replace, next }
 
 /// The package owns NO responsive rule — the app decides what to show via
 /// [VitMultiPaneView.visibleIndices]. This example uses the simplest honest
@@ -57,17 +57,30 @@ class _ExampleHomeState extends State<ExampleHome> {
   // Simplest honest rule: every page is always visible, so adding/removing
   // always has an immediate, obvious effect. An app that wants breakpoints
   // swaps this function for its own (e.g. width-based) logic.
-  List<int> _visibleIndices(BoxConstraints _) =>
-      [for (var i = 0; i < _controller.length; i++) i];
+  List<int> _visibleIndices(BoxConstraints _) => [
+    for (var i = 0; i < _controller.length; i++) i,
+  ];
 
   VitMultiPanePage _buildPage(String label) {
     final color =
         Colors.primaries[_controller.length % Colors.primaries.length];
-    return VitMultiPanePage(
+    // The page's own position can shift as other pages are removed, so the
+    // close button resolves its current index by identity at tap-time
+    // instead of capturing a (potentially stale) index at build-time.
+    VitMultiPanePage? page;
+    page = VitMultiPanePage(
       minWidth: 240,
       maxWidth: 720,
-      child: _DemoPage(label: label, color: color),
+      child: _DemoPage(
+        label: label,
+        color: color,
+        onClose: () {
+          final index = _controller.pages.indexOf(page!);
+          if (index != -1) _controller.removeAt(index);
+        },
+      ),
     );
+    return page;
   }
 
   Future<void> _showActions() async {
@@ -86,11 +99,6 @@ class _ExampleHomeState extends State<ExampleHome> {
               leading: const Icon(Icons.undo),
               title: const Text('Substituir página atual'),
               onTap: () => Navigator.pop(sheetContext, _Action.replace),
-            ),
-            ListTile(
-              leading: const Icon(Icons.remove),
-              title: const Text('Remover página atual'),
-              onTap: () => Navigator.pop(sheetContext, _Action.remove),
             ),
             ListTile(
               leading: const Icon(Icons.arrow_forward),
@@ -113,11 +121,6 @@ class _ExampleHomeState extends State<ExampleHome> {
             _controller.currentIndex,
             _buildPage('Nova ${_controller.currentIndex + 1}'),
           );
-        }
-        break;
-      case _Action.remove:
-        if (_controller.length > 0) {
-          _controller.removeAt(_controller.currentIndex);
         }
         break;
       case _Action.next:
@@ -196,34 +199,52 @@ class _StatusBar extends StatelessWidget {
 }
 
 class _DemoPage extends StatelessWidget {
-  const _DemoPage({required this.label, required this.color});
+  const _DemoPage({
+    required this.label,
+    required this.color,
+    required this.onClose,
+  });
 
   final String label;
   final Color color;
+  final VoidCallback onClose;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ColoredBox(
       color: color.withValues(alpha: 0.10),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.description_outlined, size: 48, color: color),
-              const SizedBox(height: 12),
-              Text(label, style: theme.textTheme.titleLarge),
-              const SizedBox(height: 4),
-              Text(
-                'Redimensione a janela — a divisória é arrastável',
-                style: theme.textTheme.bodySmall,
-                textAlign: TextAlign.center,
+      child: Stack(
+        children: [
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.description_outlined, size: 48, color: color),
+                  const SizedBox(height: 12),
+                  Text(label, style: theme.textTheme.titleLarge),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Redimensione a janela — a divisória é arrastável',
+                    style: theme.textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          Positioned(
+            top: 4,
+            right: 4,
+            child: IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Remover página',
+              onPressed: onClose,
+            ),
+          ),
+        ],
       ),
     );
   }
