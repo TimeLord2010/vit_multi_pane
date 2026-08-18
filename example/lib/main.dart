@@ -23,12 +23,8 @@ class VitMultiPaneExampleApp extends StatelessWidget {
 
 enum _Action { add, replace, next }
 
-/// The package owns NO responsive rule — the app decides what to show via
-/// [VitMultiPaneView.visibleIndices]. This example uses the simplest honest
-/// rule: ALL pages are always visible, nothing hidden. Apps that want
-/// breakpoints (1 page on mobile, N on desktop) plug their own function
-/// there. The FAB is the "floating component" — it manages pages through
-/// the controller.
+/// All pages in the controller are always visible, nothing hidden. The FAB
+/// is the "floating component" — it manages pages through the controller.
 class ExampleHome extends StatefulWidget {
   const ExampleHome({super.key});
 
@@ -52,14 +48,6 @@ class _ExampleHomeState extends State<ExampleHome> {
     _controller.dispose();
     super.dispose();
   }
-
-  // The responsive rule lives HERE, in the app — the package stays ignorant.
-  // Simplest honest rule: every page is always visible, so adding/removing
-  // always has an immediate, obvious effect. An app that wants breakpoints
-  // swaps this function for its own (e.g. width-based) logic.
-  List<int> _visibleIndices(BoxConstraints _) => [
-    for (var i = 0; i < _controller.length; i++) i,
-  ];
 
   VitMultiPanePage _buildPage(String label) {
     final color =
@@ -153,7 +141,6 @@ class _ExampleHomeState extends State<ExampleHome> {
                   Expanded(
                     child: VitMultiPaneView(
                       controller: _controller,
-                      visibleIndices: _visibleIndices,
                     ),
                   ),
                 ],

@@ -1,13 +1,10 @@
 # vit_multi_pane
 
-Adaptive multi-pane layout for Flutter: one page on narrow screens, several
-pages side by side with a draggable divider when there is room.
+Multi-pane layout for Flutter: pages are shown side by side with a
+draggable divider between them.
 
 ## Features
 
-- **You own the layout logic** — the package is ignorant of responsive rules.
-  `visibleIndices` decides how many and which pages appear for the current
-  constraints (e.g. `[current]` on mobile, `[0, 1]` on desktop).
 - **Required controller** — pages are plain `Widget`s owned by a
   `VitMultiPaneController` (`add`, `replaceAt`, `removeAt`, `setCurrentIndex`).
 - **Draggable dividers** — panes resize by dragging the divider; the optional
@@ -22,11 +19,7 @@ final controller = VitMultiPaneController()
   ..add(VitMultiPanePage(minWidth: 240, child: const HomePage()))
   ..add(VitMultiPanePage(minWidth: 240, child: const ReportsPage()));
 
-VitMultiPaneView(
-  controller: controller,
-  visibleIndices: (c) =>
-      c.maxWidth < 640 ? [controller.currentIndex] : [0, 1],
-);
+VitMultiPaneView(controller: controller);
 ```
 
 See `example/` for a runnable demo.

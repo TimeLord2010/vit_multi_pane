@@ -58,9 +58,7 @@ void main() {
   });
 
   group('VitMultiPaneView', () {
-    Widget wrap(VitMultiPaneController controller,
-        List<int> Function(BoxConstraints) visibleIndices,
-        {double width = 400}) {
+    Widget wrap(VitMultiPaneController controller, {double width = 400}) {
       // Center is required: MaterialApp home gives TIGHT 800x600 constraints
       // and a plain SizedBox cannot shrink inside tight constraints.
       return MaterialApp(
@@ -68,34 +66,29 @@ void main() {
           child: SizedBox(
             width: width,
             height: 200,
-            child: VitMultiPaneView(
-              controller: controller,
-              visibleIndices: visibleIndices,
-            ),
+            child: VitMultiPaneView(controller: controller),
           ),
         ),
       );
     }
 
-    testWidgets('shows a single pane when only one index is visible',
+    testWidgets('shows a single pane when the controller has one page',
         (tester) async {
       final controller = VitMultiPaneController()
-        ..add(const SizedBox(key: Key('pane0')))
-        ..add(const SizedBox(key: Key('pane1')));
+        ..add(const SizedBox(key: Key('pane0')));
 
-      await tester.pumpWidget(wrap(controller, (c) => [0]));
+      await tester.pumpWidget(wrap(controller));
 
       expect(find.byKey(const Key('pane0')), findsOneWidget);
-      expect(find.byKey(const Key('pane1')), findsNothing);
     });
 
-    testWidgets('shows panes side by side when multiple indices are visible',
+    testWidgets('shows all pages from the controller side by side',
         (tester) async {
       final controller = VitMultiPaneController()
         ..add(const SizedBox(key: Key('pane0')))
         ..add(const SizedBox(key: Key('pane1')));
 
-      await tester.pumpWidget(wrap(controller, (c) => [0, 1]));
+      await tester.pumpWidget(wrap(controller));
 
       expect(find.byKey(const Key('pane0')), findsOneWidget);
       expect(find.byKey(const Key('pane1')), findsOneWidget);
@@ -109,7 +102,7 @@ void main() {
         ..add(const SizedBox(key: Key('pane0')))
         ..add(const SizedBox(key: Key('pane1')));
 
-      await tester.pumpWidget(wrap(controller, (c) => [0, 1]));
+      await tester.pumpWidget(wrap(controller));
 
       final pane0Finder = find.byKey(const Key('pane0'));
       final before = tester.getSize(pane0Finder).width;
@@ -139,7 +132,7 @@ void main() {
 
       // 400px total: pane0's 300px minimum fits, so pane1 yields the space
       // and the divider starts at 300px — no snap needed later.
-      await tester.pumpWidget(wrap(controller, (c) => [0, 1]));
+      await tester.pumpWidget(wrap(controller));
 
       final pane0Width = tester.getSize(find.byKey(const Key('pane0'))).width;
       expect(pane0Width, closeTo(300, 1));
@@ -156,7 +149,7 @@ void main() {
         ..add(const SizedBox(key: Key('pane1')));
 
       // 400px total: pane0 starts at its 300px minimum (pane1 yields).
-      await tester.pumpWidget(wrap(controller, (c) => [0, 1]));
+      await tester.pumpWidget(wrap(controller));
 
       final pane0Finder = find.byKey(const Key('pane0'));
       expect(tester.getSize(pane0Finder).width, closeTo(300, 1));
@@ -185,7 +178,6 @@ void main() {
             height: 200,
             child: VitMultiPaneView(
               controller: controller,
-              visibleIndices: (c) => [0, 1],
               dividerWidth: 8,
               dividerBuilder: (context, index) => const ColoredBox(
                 key: Key('custom-divider'),
@@ -233,7 +225,7 @@ void main() {
 
       // 400px total vs 720px of minimums: impossible layout. The divider
       // must follow the pointer smoothly instead of snapping to 240px.
-      await tester.pumpWidget(wrap(controller, (c) => [0, 1, 2]));
+      await tester.pumpWidget(wrap(controller));
 
       final pane0Finder = find.byKey(const Key('pane0'));
       final before = tester.getSize(pane0Finder).width; // ~130

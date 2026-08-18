@@ -7,18 +7,14 @@ import 'vit_multi_pane_page.dart';
 
 /// Renders pages from a [VitMultiPaneController] side by side.
 ///
-/// The package is deliberately IGNORANT of any responsive rule (e.g. "one
-/// page on narrow screens, several when there is room"): the user decides
-/// how many and which pages are visible via [visibleIndices], which receives
-/// the available constraints and returns the indices to show. The panes are
-/// separated by a draggable divider; when a page is a [VitMultiPanePage],
-/// its [VitMultiPanePage.minWidth] / [VitMultiPanePage.maxWidth] clamp the
+/// All pages in the controller are always visible. The panes are separated
+/// by a draggable divider; when a page is a [VitMultiPanePage], its
+/// [VitMultiPanePage.minWidth] / [VitMultiPanePage.maxWidth] clamp the
 /// divider position.
 class VitMultiPaneView extends StatefulWidget {
   const VitMultiPaneView({
     super.key,
     required this.controller,
-    required this.visibleIndices,
     this.dividerWidth = 4,
     this.dividerColor = const Color(0xFFE0E0E0),
     this.dividerBuilder,
@@ -26,14 +22,6 @@ class VitMultiPaneView extends StatefulWidget {
 
   /// The controller holding the pages. Required.
   final VitMultiPaneController controller;
-
-  /// Decides which page indices are visible for the current constraints.
-  ///
-  /// Example — one page below 600px, two pages (0 and 1) above:
-  /// ```dart
-  /// visibleIndices: (c) => c.maxWidth < 600 ? [0] : [0, 1],
-  /// ```
-  final List<int> Function(BoxConstraints constraints) visibleIndices;
 
   /// Thickness of each draggable divider, in logical pixels.
   final double dividerWidth;
@@ -59,9 +47,6 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
   /// to 1 while dragging; may sum below 1 (slack absorbed by the trailing
   /// [Spacer]) when min/max constraints can't be satisfied exactly.
   List<double> _fractions = const [];
-
-  /// Valid visible indices from the last build.
-  List<int> _visibleIndices = const [];
 
   // Active drag state. The drag is start-based (absolute pointer position),
   // so the divider follows the pointer exactly and never jumps when grabbed.
@@ -111,15 +96,11 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
     if (panesWidth <= 0) return;
 
     final minF = List<double>.generate(count, (i) {
-      final w = VitMultiPanePage.minWidthOf(
-        widget.controller.pageAt(_visibleIndices[i]),
-      );
+      final w = VitMultiPanePage.minWidthOf(widget.controller.pageAt(i));
       return w == null ? 0.0 : w / panesWidth;
     });
     final maxF = List<double>.generate(count, (i) {
-      final w = VitMultiPanePage.maxWidthOf(
-        widget.controller.pageAt(_visibleIndices[i]),
-      );
+      final w = VitMultiPanePage.maxWidthOf(widget.controller.pageAt(i));
       return w == null ? 1.0 : w / panesWidth;
     });
 
@@ -157,11 +138,7 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        _visibleIndices = widget
-            .visibleIndices(constraints)
-            .where((i) => i >= 0 && i < widget.controller.length)
-            .toList();
-        final paneCount = _visibleIndices.length;
+        final paneCount = widget.controller.length;
         if (paneCount == 0) return const SizedBox.shrink();
 
         final panesWidth = _panesWidth(constraints, paneCount);
@@ -180,11 +157,11 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
     );
   }
 
-  Widget _buildPane(int visibleIndex, double panesWidth) {
-    final fraction = _fractions[visibleIndex];
+  Widget _buildPane(int index, double panesWidth) {
+    final fraction = _fractions[index];
     return SizedBox(
       width: fraction * panesWidth,
-      child: widget.controller.pageAt(_visibleIndices[visibleIndex]),
+      child: widget.controller.pageAt(index),
     );
   }
 
@@ -234,7 +211,7 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
     var leftMin = 0.0;
     var leftMax = 0.0;
     for (var i = 0; i <= dividerIndex; i++) {
-      final page = widget.controller.pageAt(_visibleIndices[i]);
+      final page = widget.controller.pageAt(i);
       leftMin += (VitMultiPanePage.minWidthOf(page) ?? 0) / panesWidth;
       leftMax +=
           (VitMultiPanePage.maxWidthOf(page) ?? double.infinity) / panesWidth;
@@ -242,7 +219,7 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
     var rightMin = 0.0;
     var rightMax = 0.0;
     for (var i = dividerIndex + 1; i < _fractions.length; i++) {
-      final page = widget.controller.pageAt(_visibleIndices[i]);
+      final page = widget.controller.pageAt(i);
       rightMin += (VitMultiPanePage.minWidthOf(page) ?? 0) / panesWidth;
       rightMax +=
           (VitMultiPanePage.maxWidthOf(page) ?? double.infinity) / panesWidth;
