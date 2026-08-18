@@ -23,8 +23,6 @@ class VitMultiPaneExampleApp extends StatelessWidget {
   }
 }
 
-enum _Action { add, replace, next }
-
 /// All pages in the controller are always visible, nothing hidden. The FAB
 /// is the "floating component" — it manages pages through the controller.
 class ExampleHome extends StatefulWidget {
@@ -107,9 +105,11 @@ class _ExampleHomeState extends State<ExampleHome> {
         },
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showActions,
-        icon: const Icon(Icons.tune),
-        label: const Text('Gerenciar páginas'),
+        onPressed: () {
+          _controller.add(_buildPage('Página ${_controller.length + 1}'));
+        },
+        icon: const Icon(Icons.add),
+        label: const Text('Adicionar página'),
       ),
     );
   }
@@ -156,56 +156,6 @@ class _ExampleHomeState extends State<ExampleHome> {
       ),
     );
     return page;
-  }
-
-  Future<void> _showActions() async {
-    final action = await showModalBottomSheet<_Action>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.add),
-              title: const Text('Adicionar página'),
-              onTap: () => Navigator.pop(sheetContext, _Action.add),
-            ),
-            ListTile(
-              leading: const Icon(Icons.undo),
-              title: const Text('Substituir página atual'),
-              onTap: () => Navigator.pop(sheetContext, _Action.replace),
-            ),
-            ListTile(
-              leading: const Icon(Icons.arrow_forward),
-              title: const Text('Ir para a próxima página'),
-              onTap: () => Navigator.pop(sheetContext, _Action.next),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (!mounted || action == null) return;
-    switch (action) {
-      case _Action.add:
-        // Just add — no hidden logic, no index games. The page appears.
-        _controller.add(_buildPage('Página ${_controller.length + 1}'));
-        break;
-      case _Action.replace:
-        if (_controller.length > 0) {
-          _controller.replaceAt(
-            _controller.currentIndex,
-            _buildPage('Nova ${_controller.currentIndex + 1}'),
-          );
-        }
-        break;
-      case _Action.next:
-        if (_controller.length > 1) {
-          _controller.setCurrentIndex(
-            (_controller.currentIndex + 1) % _controller.length,
-          );
-        }
-        break;
-    }
   }
 }
 
