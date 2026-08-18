@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vit_multi_pane/vit_multi_pane.dart';
 import 'package:vit_multi_pane_example/mouse_hover_listener.dart';
+import 'package:vit_multi_pane_example/proportions_dialog.dart';
 
 void main() {
   runApp(const VitMultiPaneExampleApp());
@@ -64,10 +65,19 @@ class _ExampleHomeState extends State<ExampleHome> {
                     width: width,
                     pageCount: _controller.length,
                     currentIndex: _controller.currentIndex,
+                    onDistributeEvenly: _distributeEvenly,
+                    onEditProportions: _editProportions,
                   ),
                   Expanded(
                     child: VitMultiPaneView(
                       controller: _controller,
+                      // Metade para a primeira página; as outras duas
+                      // dividem o resto.
+                      initialProportions: const [
+                        0.5,
+                        double.infinity,
+                        double.infinity,
+                      ],
                       dividerBuilder: (context, dividerIndex) {
                         return MouseHoverListener(
                           builder: (context, isMouseOver, child) {
@@ -112,6 +122,44 @@ class _ExampleHomeState extends State<ExampleHome> {
         label: const Text('Adicionar página'),
       ),
     );
+  }
+
+  /// Every page asks for "the rest of the space", so they all get the same
+  /// slice.
+  void _distributeEvenly() {
+    _controller.setProportions(
+      List.filled(_controller.length, double.infinity),
+    );
+  }
+
+  /// Hands the split over to the user: one value per page, applied straight
+  /// to the controller.
+  Future<void> _editProportions() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final request = await showProportionsDialog(
+      context,
+      pageLabels: [
+        for (var i = 0; i < _controller.length; i++) _labelAt(i),
+      ],
+    );
+    if (request == null) return;
+
+    try {
+      _controller.setProportions(request);
+    } on ArgumentError catch (error) {
+      // The package rejects a malformed request instead of guessing — showing
+      // that here is half the point of the demo.
+      messenger.showSnackBar(
+        SnackBar(content: Text('Recusado: ${error.message}')),
+      );
+    }
+  }
+
+  /// The page's own title, for the dialog's rows.
+  String _labelAt(int index) {
+    final page = _controller.pageAt(index);
+    final child = page is VitMultiPanePage ? page.child : page;
+    return child is _DemoPage ? child.label : 'Página ${index + 1}';
   }
 
   VitMultiPanePage _buildPage(
@@ -164,11 +212,15 @@ class _StatusBar extends StatelessWidget {
     required this.width,
     required this.pageCount,
     required this.currentIndex,
+    required this.onDistributeEvenly,
+    required this.onEditProportions,
   });
 
   final double width;
   final int pageCount;
   final int currentIndex;
+  final VoidCallback onDistributeEvenly;
+  final VoidCallback onEditProportions;
 
   @override
   Widget build(BuildContext context) {
@@ -177,10 +229,26 @@ class _StatusBar extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       color: theme.colorScheme.surfaceContainerHighest,
-      child: Text(
-        'largura: ${width.round()}px · páginas: $pageCount · '
-        'atual: $currentIndex',
-        style: theme.textTheme.bodySmall,
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              'largura: ${width.round()}px · páginas: $pageCount · '
+              'atual: $currentIndex',
+              style: theme.textTheme.bodySmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          TextButton(
+            onPressed: pageCount == 0 ? null : onDistributeEvenly,
+            child: const Text('Distribuir igualmente'),
+          ),
+          TextButton(
+            onPressed: pageCount == 0 ? null : onEditProportions,
+            child: const Text('Definir proporções…'),
+          ),
+        ],
       ),
     );
   }

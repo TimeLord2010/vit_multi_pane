@@ -1,9 +1,4 @@
-import 'dart:math' as math;
-
-import 'package:flutter/widgets.dart';
-
-import 'vit_multi_pane_controller.dart';
-import 'vit_multi_pane_page.dart';
+part of 'multi_pane.dart';
 
 /// Renders pages from a [VitMultiPaneController] side by side.
 ///
@@ -19,11 +14,33 @@ class VitMultiPaneView extends StatefulWidget {
     this.dividerHitWidth = 12,
     this.dividerColor = const Color(0xFFE0E0E0),
     this.dividerBuilder,
+    this.initialProportions,
   })  : assert(dividerWidth >= 0),
         assert(dividerHitWidth >= 0);
 
   /// The controller holding the pages. Required.
   final VitMultiPaneController controller;
+
+  /// How to split the space the first time the panes are laid out.
+  ///
+  /// Same dialect as [VitMultiPaneController.setProportions] — one fraction
+  /// per page, [double.infinity] for "take whatever is left":
+  ///
+  /// ```dart
+  /// VitMultiPaneView(
+  ///   controller: controller,
+  ///   initialProportions: [0.3, double.infinity],
+  /// );
+  /// ```
+  ///
+  /// Null (the default) starts every page at an equal share.
+  ///
+  /// Read once, when the pages first get a layout — after that the split
+  /// belongs to the user (and to [VitMultiPaneController.setProportions]).
+  /// Changing this value later, or swapping the controller, does not
+  /// re-apply it. It is also ignored, with an assert in debug, when it
+  /// doesn't hold exactly one valid value per page at that moment.
+  final List<double>? initialProportions;
 
   /// Thickness of each divider's visual, in logical pixels.
   final double dividerWidth;
@@ -63,6 +80,11 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
   /// [Spacer]) when min/max constraints can't be satisfied exactly.
   List<double> _fractions = const [];
 
+  /// Whether the panes have ever been laid out. Guards
+  /// [VitMultiPaneView.initialProportions], which describes that first layout
+  /// only — the pages may well appear a few frames after this view does.
+  bool _laidOut = false;
+
   // Active drag state. Every update is recomputed from the layout snapshotted
   // at drag start against the absolute pointer position, so the divider sits
   // exactly under the pointer and no error can accumulate over the (dozens
@@ -74,22 +96,30 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
   @override
   void initState() {
     super.initState();
-    widget.controller.addListener(_handleControllerChanged);
+    widget.controller
+      ..addListener(_handleControllerChanged)
+      .._registerView(_applyProportions);
   }
 
   @override
   void didUpdateWidget(covariant VitMultiPaneView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.controller != widget.controller) {
-      oldWidget.controller.removeListener(_handleControllerChanged);
-      widget.controller.addListener(_handleControllerChanged);
+      oldWidget.controller
+        ..removeListener(_handleControllerChanged)
+        .._unregisterView(_applyProportions);
+      widget.controller
+        ..addListener(_handleControllerChanged)
+        .._registerView(_applyProportions);
       _handleDragEnd();
     }
   }
 
   @override
   void dispose() {
-    widget.controller.removeListener(_handleControllerChanged);
+    widget.controller
+      ..removeListener(_handleControllerChanged)
+      .._unregisterView(_applyProportions);
     super.dispose();
   }
 
@@ -102,14 +132,48 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
     return constraints.maxWidth - dividerTotal;
   }
 
+  /// Adopts the split commanded by [VitMultiPaneController.setProportions].
+  ///
+  /// The fractions land as-is; [_syncFractions] clamps them to each page's
+  /// min/max on the build that follows.
+  void _applyProportions(List<double> fractions) {
+    if (!mounted) return;
+    setState(() {
+      _fractions = List<double>.of(fractions);
+    });
+    // A drag in flight was snapshotted against the old layout; its next update
+    // would write that stale layout back over the new one.
+    _handleDragEnd();
+  }
+
+  /// [VitMultiPaneView.initialProportions] resolved for [count] pages, or
+  /// null when there is nothing usable to start from.
+  ///
+  /// Only the first layout gets it: a page added later re-splits the row
+  /// evenly, the same as it always has.
+  List<double>? _initialFractions(int count) {
+    final requested = widget.initialProportions;
+    if (_laidOut || requested == null) return null;
+
+    final problem = proportionsProblem(requested, count);
+    assert(
+      problem == null,
+      'VitMultiPaneView.initialProportions was ignored: $problem.',
+    );
+    if (problem != null) return null;
+    return resolveProportions(requested);
+  }
+
   /// Ensures [_fractions] matches [count] and, when there is room, lays out
   /// panes within their min/max — so the initial layout is never in a state
   /// a drag would snap out of. When the minimums can't fit, keeps the
   /// (shrunk) layout and lets the drag move freely.
   void _syncFractions(int count, double panesWidth) {
     if (_fractions.length != count) {
-      _fractions = List<double>.filled(count, 1 / count);
+      _fractions = _initialFractions(count) ??
+          List<double>.filled(count, 1 / count);
     }
+    _laidOut = true;
     if (panesWidth <= 0) return;
 
     final minF = List<double>.generate(count, (i) {

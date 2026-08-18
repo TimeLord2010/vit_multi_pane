@@ -45,6 +45,45 @@ onClose: () {
 }
 ```
 
+## Proporções
+
+O layout inicial se declara na view:
+
+```dart
+VitMultiPaneView(
+  controller: controller,
+  initialProportions: [0.3, double.infinity],
+);
+```
+
+Ele vale para o primeiro layout dos painéis (se o controller começar vazio,
+espera as páginas aparecerem). Depois disso o split é do usuário: mudar esse
+valor ou trocar de controller não reaplica nada.
+
+Para repartir o espaço em tempo de execução, o comando é do controller —
+`setProportions` age na hora. Os dois falam o mesmo dialeto: um valor por
+página, cada um como fração da área disponível (as divisórias não contam), e
+`double.infinity` significando "pega o que sobrar", dividido igualmente entre
+as entradas infinitas:
+
+```dart
+controller.setProportions([0.5, double.infinity, double.infinity]);
+// → 50% para a primeira página, 25% para cada uma das outras duas.
+
+controller.setProportions([1, 1, 1]);        // terços iguais
+controller.setProportions([0.33, 0.33, 0.33]); // idem: valores finitos são
+                                               // normalizados
+```
+
+É um comando, não uma configuração: ele aplica o layout e é esquecido. O
+usuário continua livre para arrastar as divisórias depois, e adicionar ou
+remover uma página volta a distribuir tudo igualmente. Como nada fica
+guardado, o comando só age sobre uma view que já está na árvore — chamar antes
+do primeiro build não faz nada (e dispara um `assert` em debug).
+
+`minWidth` / `maxWidth` continuam mandando: uma página pode acabar mais larga
+ou mais estreita do que foi pedido.
+
 ## Divisória
 
 O arraste é do pacote; a aparência é sua. `dividerBuilder` recebe uma caixa de

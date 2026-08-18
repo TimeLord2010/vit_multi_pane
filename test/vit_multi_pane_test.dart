@@ -56,6 +56,34 @@ void main() {
       expect(() => controller.removeAt(0), throwsRangeError);
       expect(() => controller.setCurrentIndex(0), throwsRangeError);
     });
+
+    test('setProportions rejects malformed requests', () {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox())
+        ..add(const SizedBox());
+
+      expect(() => controller.setProportions([0.5]), throwsArgumentError);
+      expect(() => controller.setProportions([0.3, 0.3, 0.4]),
+          throwsArgumentError);
+      expect(() => controller.setProportions([-0.5, 0.5]),
+          throwsArgumentError);
+      expect(() => controller.setProportions([1.5, 0.5]),
+          throwsArgumentError);
+      expect(() => controller.setProportions([double.nan, 0.5]),
+          throwsArgumentError);
+      expect(() => controller.setProportions([0, 0]), throwsArgumentError);
+    });
+
+    test('setProportions asserts when no view is rendering the pages', () {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox())
+        ..add(const SizedBox());
+
+      // Nothing is stored, so a command with no view to act on is a silent
+      // no-op in release — worth catching while developing.
+      expect(() => controller.setProportions([0.3, 0.7]),
+          throwsAssertionError);
+    });
   });
 
   group('VitMultiPaneView', () {
@@ -463,6 +491,267 @@ void main() {
 
       expect(widthOf(tester, 'pane0'), closeTo(before + 30, 0.5));
       expect(widthOf(tester, 'pane1'), closeTo(before - 30, 0.5));
+    });
+  });
+
+  group('VitMultiPaneView proportions', () {
+    // 400px wide; with three panes the two 4px dividers leave 392px to split.
+    Widget wrap(VitMultiPaneController controller) {
+      return MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 400,
+            height: 200,
+            child: VitMultiPaneView(controller: controller),
+          ),
+        ),
+      );
+    }
+
+    double widthOf(WidgetTester tester, String key) =>
+        tester.getSize(find.byKey(Key(key))).width;
+
+    VitMultiPaneController threePanes() => VitMultiPaneController()
+      ..add(const SizedBox(key: Key('pane0')))
+      ..add(const SizedBox(key: Key('pane1')))
+      ..add(const SizedBox(key: Key('pane2')));
+
+    testWidgets('setProportions splits the space as asked', (tester) async {
+      final controller = threePanes();
+      await tester.pumpWidget(wrap(controller));
+
+      controller.setProportions([0.5, 0.25, 0.25]);
+      await tester.pump();
+
+      expect(widthOf(tester, 'pane0'), closeTo(196, 0.5));
+      expect(widthOf(tester, 'pane1'), closeTo(98, 0.5));
+      expect(widthOf(tester, 'pane2'), closeTo(98, 0.5));
+    });
+
+    testWidgets('infinity shares whatever the fixed pages leave',
+        (tester) async {
+      final controller = threePanes();
+      await tester.pumpWidget(wrap(controller));
+
+      controller.setProportions([0.5, double.infinity, double.infinity]);
+      await tester.pump();
+
+      expect(widthOf(tester, 'pane0'), closeTo(196, 0.5));
+      expect(widthOf(tester, 'pane1'), closeTo(98, 0.5));
+      expect(widthOf(tester, 'pane2'), closeTo(98, 0.5));
+    });
+
+    testWidgets('an all-infinity request spreads the panes evenly',
+        (tester) async {
+      final controller = threePanes();
+      await tester.pumpWidget(wrap(controller));
+
+      controller.setProportions([0.9, 0.05, 0.05]);
+      await tester.pump();
+      controller.setProportions(List.filled(3, double.infinity));
+      await tester.pump();
+
+      expect(widthOf(tester, 'pane0'), closeTo(392 / 3, 0.5));
+      expect(widthOf(tester, 'pane1'), closeTo(392 / 3, 0.5));
+      expect(widthOf(tester, 'pane2'), closeTo(392 / 3, 0.5));
+    });
+
+    testWidgets('finite values that do not add up to 1 are read as a ratio',
+        (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')));
+      await tester.pumpWidget(wrap(controller));
+
+      // 396px to split, 1:3 → 99 / 297.
+      controller.setProportions([0.25, 0.75]);
+      await tester.pump();
+      expect(widthOf(tester, 'pane0'), closeTo(99, 0.5));
+
+      // Same ratio written as thirds of nothing in particular.
+      controller.setProportions([0.2, 0.6]);
+      await tester.pump();
+      expect(widthOf(tester, 'pane0'), closeTo(99, 0.5));
+      expect(widthOf(tester, 'pane1'), closeTo(297, 0.5));
+    });
+
+    testWidgets('minWidth still wins over the requested split',
+        (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const VitMultiPanePage(
+          key: Key('pane0'),
+          minWidth: 300,
+          child: SizedBox(),
+        ))
+        ..add(const SizedBox(key: Key('pane1')));
+      await tester.pumpWidget(wrap(controller));
+
+      // 25% of 396 is 99px, below pane0's floor: it keeps 300 and pane1 takes
+      // what is left instead of the row overflowing.
+      controller.setProportions([0.25, 0.75]);
+      await tester.pump();
+
+      expect(widthOf(tester, 'pane0'), closeTo(300, 0.5));
+      expect(widthOf(tester, 'pane1'), closeTo(96, 0.5));
+    });
+
+    testWidgets('the dividers stay draggable from the new split',
+        (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')));
+      await tester.pumpWidget(wrap(controller));
+
+      controller.setProportions([0.25, 0.75]);
+      await tester.pump();
+
+      final viewTop = tester.getTopLeft(find.byType(VitMultiPaneView)).dy;
+      final dividerX =
+          tester.getTopRight(find.byKey(const Key('pane0'))).dx + 2;
+      final gesture = await tester.startGesture(
+        Offset(dividerX, viewTop + 100),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveBy(const Offset(30, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(widthOf(tester, 'pane0'), closeTo(129, 0.5));
+    });
+
+    testWidgets('a command is one-shot: adding a page evens the panes out',
+        (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')));
+      await tester.pumpWidget(wrap(controller));
+
+      controller.setProportions([0.25, 0.75]);
+      await tester.pump();
+      expect(widthOf(tester, 'pane0'), closeTo(99, 0.5));
+
+      controller.add(const SizedBox(key: Key('pane2')));
+      await tester.pump();
+
+      expect(widthOf(tester, 'pane0'), closeTo(392 / 3, 0.5));
+      expect(widthOf(tester, 'pane1'), closeTo(392 / 3, 0.5));
+      expect(widthOf(tester, 'pane2'), closeTo(392 / 3, 0.5));
+    });
+
+    testWidgets('initialProportions lays the panes out on the first frame',
+        (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')));
+
+      await tester.pumpWidget(MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 400,
+            height: 200,
+            child: VitMultiPaneView(
+              controller: controller,
+              initialProportions: const [0.25, double.infinity],
+            ),
+          ),
+        ),
+      ));
+
+      expect(widthOf(tester, 'pane0'), closeTo(99, 0.5));
+      expect(widthOf(tester, 'pane1'), closeTo(297, 0.5));
+    });
+
+    testWidgets('initialProportions waits for the pages to show up',
+        (tester) async {
+      // An empty controller has no panes to lay out, so the declared split
+      // applies whenever the pages do arrive — not on the widget's own first
+      // build, which happens before them.
+      final controller = VitMultiPaneController();
+
+      await tester.pumpWidget(MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 400,
+            height: 200,
+            child: VitMultiPaneView(
+              controller: controller,
+              initialProportions: const [0.25, 0.75],
+            ),
+          ),
+        ),
+      ));
+
+      controller
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')));
+      await tester.pump();
+
+      expect(widthOf(tester, 'pane0'), closeTo(99, 0.5));
+    });
+
+    testWidgets('initialProportions only describes the first layout',
+        (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')));
+
+      await tester.pumpWidget(MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 400,
+            height: 200,
+            child: VitMultiPaneView(
+              controller: controller,
+              initialProportions: const [0.25, 0.75],
+            ),
+          ),
+        ),
+      ));
+      expect(widthOf(tester, 'pane0'), closeTo(99, 0.5));
+
+      // A third page re-splits the row evenly instead of reviving the
+      // declared 1:3 — from here on the layout is the user's.
+      controller.add(const SizedBox(key: Key('pane2')));
+      await tester.pump();
+
+      expect(widthOf(tester, 'pane0'), closeTo(392 / 3, 0.5));
+    });
+
+    testWidgets('a malformed initialProportions is reported and ignored',
+        (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')));
+
+      await tester.pumpWidget(MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 400,
+            height: 200,
+            child: VitMultiPaneView(
+              controller: controller,
+              initialProportions: const [0.25, 0.25, 0.5], // one page short
+            ),
+          ),
+        ),
+      ));
+
+      expect(tester.takeException(), isAssertionError);
+    });
+
+    testWidgets('a disposed view stops receiving commands', (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')));
+
+      await tester.pumpWidget(wrap(controller));
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+
+      // Detached again: the assert is the tell that nothing is listening.
+      expect(() => controller.setProportions([0.25, 0.75]),
+          throwsAssertionError);
     });
   });
 }
