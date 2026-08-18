@@ -4,6 +4,7 @@ description: >-
   arrastável e limites de largura por painel.
 version: 1.0.0
 homepage:
+repository: https://github.com/TimeLord2010/vit_multi_pane
 
 environment:
   sdk: ^3.12.2
