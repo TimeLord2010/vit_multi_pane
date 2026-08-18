@@ -2,7 +2,7 @@ name: vit_multi_pane
 description: >-
   Layout de múltiplos painéis: páginas lado a lado, com divisória
   arrastável e limites de largura por painel.
-version: 0.0.1
+version: 1.0.0
 homepage:
 
 environment:
