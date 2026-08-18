@@ -265,6 +265,17 @@ class _DemoPageState extends State<_DemoPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Measured HERE, at the page's own boundary: the SizedBox _buildPane wraps
+    // this page in gives it a tight width, so this is exactly the pane's
+    // on-screen width. Measuring further down the tree would report whatever
+    // padding/insets sit in between, not the pane.
+    return LayoutBuilder(
+      builder: (context, constraints) =>
+          _buildBody(theme, constraints.maxWidth),
+    );
+  }
+
+  Widget _buildBody(ThemeData theme, double paneWidth) {
     return ColoredBox(
       color: widget.color.withValues(alpha: 0.10),
       child: Stack(
@@ -289,14 +300,9 @@ class _DemoPageState extends State<_DemoPage> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 8),
-                  // The SizedBox _buildPane wraps this page in gives it a
-                  // tight width, so the constraints LayoutBuilder sees here
-                  // are exactly this page's current on-screen width.
-                  LayoutBuilder(
-                    builder: (context, constraints) => Text(
-                      'Largura atual: ${constraints.maxWidth.round()}px',
-                      style: theme.textTheme.labelMedium,
-                    ),
+                  Text(
+                    'Largura atual: ${paneWidth.round()}px',
+                    style: theme.textTheme.labelMedium,
                   ),
                   const SizedBox(height: 16),
                   Row(
