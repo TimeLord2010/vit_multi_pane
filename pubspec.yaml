@@ -1,5 +1,7 @@
 name: vit_multi_pane
-description: 'A new Flutter package project.'
+description: >-
+  Layout de múltiplos painéis: páginas lado a lado, com divisória
+  arrastável e limites de largura por painel.
 version: 0.0.1
 homepage:
 
