@@ -68,19 +68,3 @@ VitMultiPaneView(
 da espessura visual: uma divisória de 1px continua fácil de agarrar. Essa área
 é sobreposta e translúcida ao hit-test — ela não ocupa espaço no layout nem
 engole os toques e hovers do conteúdo das páginas embaixo dela.
-
-## Comportamento do arraste
-
-- A divisória fica exatamente sob o ponteiro, um pixel de tela por pixel de
-  movimento — arrastar de volta ao ponto de origem restaura as larguras
-  originais.
-- Um arraste move só os dois painéis que a divisória separa. Os painéis além
-  deles só começam a mexer quando o vizinho encosta no próprio `minWidth` /
-  `maxWidth`.
-- As larguras são guardadas como frações, então redimensionar a janela
-  reescala o layout em vez de esticar um painel só.
-- Funciona sob `Directionality.rtl`: a direção do arraste e as áreas de pega
-  acompanham o sentido do texto.
-
-Rode `example/` para um demo interativo (adicionar e remover painéis, editar
-`minWidth` / `maxWidth` em tempo real).
