@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vit_multi_pane/vit_multi_pane.dart';
+import 'package:vit_multi_pane_example/mouse_hover_listener.dart';
 
 void main() {
   runApp(const VitMultiPaneExampleApp());
@@ -34,7 +35,7 @@ class ExampleHome extends StatefulWidget {
 }
 
 class _ExampleHomeState extends State<ExampleHome> {
-  final VitMultiPaneController _controller = VitMultiPaneController();
+  final _controller = VitMultiPaneController();
 
   @override
   void initState() {
@@ -48,6 +49,69 @@ class _ExampleHomeState extends State<ExampleHome> {
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          return ListenableBuilder(
+            listenable: _controller,
+            builder: (context, _) {
+              return Column(
+                children: [
+                  _StatusBar(
+                    width: width,
+                    pageCount: _controller.length,
+                    currentIndex: _controller.currentIndex,
+                  ),
+                  Expanded(
+                    child: VitMultiPaneView(
+                      controller: _controller,
+                      dividerBuilder: (context, dividerIndex) {
+                        return MouseHoverListener(
+                          builder: (context, isMouseOver, child) {
+                            return Container(
+                              width: 6,
+                              decoration: BoxDecoration(
+                                color: Color.fromARGB(255, 233, 233, 233),
+                              ),
+                              child: Center(
+                                child: AnimatedContainer(
+                                  duration: Duration(milliseconds: 150),
+                                  width: 2,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    borderRadius: .circular(20),
+                                    color: Color.fromARGB(
+                                      isMouseOver ? 255 : 100,
+                                      145,
+                                      145,
+                                      145,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showActions,
+        icon: const Icon(Icons.tune),
+        label: const Text('Gerenciar páginas'),
+      ),
+    );
   }
 
   VitMultiPanePage _buildPage(
@@ -142,37 +206,6 @@ class _ExampleHomeState extends State<ExampleHome> {
         }
         break;
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth;
-          return ListenableBuilder(
-            listenable: _controller,
-            builder: (context, _) {
-              return Column(
-                children: [
-                  _StatusBar(
-                    width: width,
-                    pageCount: _controller.length,
-                    currentIndex: _controller.currentIndex,
-                  ),
-                  Expanded(child: VitMultiPaneView(controller: _controller)),
-                ],
-              );
-            },
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showActions,
-        icon: const Icon(Icons.tune),
-        label: const Text('Gerenciar páginas'),
-      ),
-    );
   }
 }
 
