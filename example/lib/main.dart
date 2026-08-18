@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:vit_multi_pane/vit_multi_pane.dart';
 
 void main() {
@@ -49,22 +50,44 @@ class _ExampleHomeState extends State<ExampleHome> {
     super.dispose();
   }
 
-  VitMultiPanePage _buildPage(String label) {
-    final color =
-        Colors.primaries[_controller.length % Colors.primaries.length];
+  VitMultiPanePage _buildPage(
+    String label, {
+    Color? color,
+    double? minWidth = 240,
+    double? maxWidth = 720,
+  }) {
+    final pageColor =
+        color ?? Colors.primaries[_controller.length % Colors.primaries.length];
     // The page's own position can shift as other pages are removed, so the
-    // close button resolves its current index by identity at tap-time
-    // instead of capturing a (potentially stale) index at build-time.
+    // close button (and the width-constraint editor) resolves its current
+    // index by identity at tap-time instead of capturing a (potentially
+    // stale) index at build-time.
     VitMultiPanePage? page;
     page = VitMultiPanePage(
-      minWidth: 240,
-      maxWidth: 720,
+      minWidth: minWidth,
+      maxWidth: maxWidth,
       child: _DemoPage(
         label: label,
-        color: color,
+        color: pageColor,
+        minWidth: minWidth,
+        maxWidth: maxWidth,
         onClose: () {
           final index = _controller.pages.indexOf(page!);
           if (index != -1) _controller.removeAt(index);
+        },
+        onConstraintsChanged: (newMinWidth, newMaxWidth) {
+          final index = _controller.pages.indexOf(page!);
+          if (index != -1) {
+            _controller.replaceAt(
+              index,
+              _buildPage(
+                label,
+                color: pageColor,
+                minWidth: newMinWidth,
+                maxWidth: newMaxWidth,
+              ),
+            );
+          }
         },
       ),
     );
@@ -185,22 +208,68 @@ class _StatusBar extends StatelessWidget {
   }
 }
 
-class _DemoPage extends StatelessWidget {
+class _DemoPage extends StatefulWidget {
   const _DemoPage({
     required this.label,
     required this.color,
+    required this.minWidth,
+    required this.maxWidth,
     required this.onClose,
+    required this.onConstraintsChanged,
   });
 
   final String label;
   final Color color;
+  final double? minWidth;
+  final double? maxWidth;
   final VoidCallback onClose;
+
+  /// Called with the parsed field values whenever the user edits either
+  /// width field to a valid state (an empty field means "no constraint").
+  final void Function(double? minWidth, double? maxWidth) onConstraintsChanged;
+
+  @override
+  State<_DemoPage> createState() => _DemoPageState();
+}
+
+class _DemoPageState extends State<_DemoPage> {
+  // Owned by this State (not rebuilt from widget fields) so typing survives
+  // the replaceAt-triggered rebuild that every edit causes.
+  late final _minController =
+      TextEditingController(text: _widthText(widget.minWidth));
+  late final _maxController =
+      TextEditingController(text: _widthText(widget.maxWidth));
+
+  static String _widthText(double? value) =>
+      value == null ? '' : value.toStringAsFixed(0);
+
+  @override
+  void dispose() {
+    _minController.dispose();
+    _maxController.dispose();
+    super.dispose();
+  }
+
+  void _applyConstraints() {
+    final minText = _minController.text;
+    final maxText = _maxController.text;
+    final min = minText.isEmpty ? null : double.tryParse(minText);
+    final max = maxText.isEmpty ? null : double.tryParse(maxText);
+    // Ignore states VitMultiPanePage would reject (an unparsable non-empty
+    // field, or min > max) — the user is still mid-edit.
+    if ((minText.isNotEmpty && min == null) ||
+        (maxText.isNotEmpty && max == null)) {
+      return;
+    }
+    if (min != null && max != null && min > max) return;
+    widget.onConstraintsChanged(min, max);
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return ColoredBox(
-      color: color.withValues(alpha: 0.10),
+      color: widget.color.withValues(alpha: 0.10),
       child: Stack(
         children: [
           Center(
@@ -209,14 +278,47 @@ class _DemoPage extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.description_outlined, size: 48, color: color),
+                  Icon(Icons.description_outlined, size: 48, color: widget.color),
                   const SizedBox(height: 12),
-                  Text(label, style: theme.textTheme.titleLarge),
+                  Text(widget.label, style: theme.textTheme.titleLarge),
                   const SizedBox(height: 4),
                   Text(
                     'Redimensione a janela — a divisória é arrastável',
                     style: theme.textTheme.bodySmall,
                     textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                  // The SizedBox _buildPane wraps this page in gives it a
+                  // tight width, so the constraints LayoutBuilder sees here
+                  // are exactly this page's current on-screen width.
+                  LayoutBuilder(
+                    builder: (context, constraints) => Text(
+                      'Largura atual: ${constraints.maxWidth.round()}px',
+                      style: theme.textTheme.labelMedium,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 90,
+                        child: _WidthField(
+                          controller: _minController,
+                          label: 'Mín (px)',
+                          onChanged: _applyConstraints,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 90,
+                        child: _WidthField(
+                          controller: _maxController,
+                          label: 'Máx (px)',
+                          onChanged: _applyConstraints,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -228,11 +330,38 @@ class _DemoPage extends StatelessWidget {
             child: IconButton(
               icon: const Icon(Icons.close),
               tooltip: 'Remover página',
-              onPressed: onClose,
+              onPressed: widget.onClose,
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _WidthField extends StatelessWidget {
+  const _WidthField({
+    required this.controller,
+    required this.label,
+    required this.onChanged,
+  });
+
+  final TextEditingController controller;
+  final String label;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      decoration: InputDecoration(
+        labelText: label,
+        isDense: true,
+        border: const OutlineInputBorder(),
+      ),
+      onChanged: (_) => onChanged(),
     );
   }
 }
