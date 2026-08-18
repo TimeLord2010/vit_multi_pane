@@ -16,15 +16,26 @@ class VitMultiPaneView extends StatefulWidget {
     super.key,
     required this.controller,
     this.dividerWidth = 4,
+    this.dividerHitWidth = 12,
     this.dividerColor = const Color(0xFFE0E0E0),
     this.dividerBuilder,
-  });
+  })  : assert(dividerWidth >= 0),
+        assert(dividerHitWidth >= 0);
 
   /// The controller holding the pages. Required.
   final VitMultiPaneController controller;
 
-  /// Thickness of each draggable divider, in logical pixels.
+  /// Thickness of each divider's visual, in logical pixels.
   final double dividerWidth;
+
+  /// Width of the invisible strip that grabs the divider, in logical pixels.
+  ///
+  /// A hairline divider is painfully hard to hit, so the drag area is a
+  /// separate overlay, centered on the divider and at least
+  /// [dividerWidth] wide. It takes no layout space (widening it does not
+  /// move the panes) and it is translucent to hit-testing, so page content
+  /// underneath still receives taps, hovers and its own gestures.
+  final double dividerHitWidth;
 
   /// Color of each draggable divider (ignored when [dividerBuilder] is set).
   final Color dividerColor;
@@ -33,8 +44,8 @@ class VitMultiPaneView extends StatefulWidget {
   ///
   /// When null, a plain [Container] with [dividerColor] is used. When
   /// provided, the returned widget is placed in a box of [dividerWidth] ×
-  /// full height and wrapped in the drag gesture — the drag behavior stays
-  /// in the package, the look is fully yours (color, icon, handle, …).
+  /// full height — the drag behavior stays in the package (see
+  /// [dividerHitWidth]), the look is fully yours (color, icon, handle, …).
   final Widget Function(BuildContext context, int dividerIndex)?
       dividerBuilder;
 
@@ -42,16 +53,22 @@ class VitMultiPaneView extends StatefulWidget {
   State<VitMultiPaneView> createState() => _VitMultiPaneViewState();
 }
 
+/// Slack below which two widths are considered equal. Drag deltas arrive in
+/// physical-pixel steps, so anything finer than this is noise.
+const double _epsilon = 1e-6;
+
 class _VitMultiPaneViewState extends State<VitMultiPaneView> {
   /// Fraction of the panes area occupied by each visible pane. Always sums
   /// to 1 while dragging; may sum below 1 (slack absorbed by the trailing
   /// [Spacer]) when min/max constraints can't be satisfied exactly.
   List<double> _fractions = const [];
 
-  // Active drag state. The drag is start-based (absolute pointer position),
-  // so the divider follows the pointer exactly and never jumps when grabbed.
+  // Active drag state. Every update is recomputed from the layout snapshotted
+  // at drag start against the absolute pointer position, so the divider sits
+  // exactly under the pointer and no error can accumulate over the (dozens
+  // of) update events a single drag produces.
   int? _activeDivider;
-  double _dragStartLeftTotal = 0;
+  List<double> _dragStartFractions = const [];
   double _dragStartX = 0;
 
   @override
@@ -66,7 +83,7 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
     if (oldWidget.controller != widget.controller) {
       oldWidget.controller.removeListener(_handleControllerChanged);
       widget.controller.addListener(_handleControllerChanged);
-      _activeDivider = null;
+      _handleDragEnd();
     }
   }
 
@@ -145,143 +162,242 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
         if (panesWidth <= 0) return const SizedBox.shrink();
         _syncFractions(paneCount, panesWidth);
 
-        final children = <Widget>[];
+        final widths = List<double>.generate(
+          paneCount,
+          (i) => _fractions[i] * panesWidth,
+        );
+
+        final row = <Widget>[];
         for (var i = 0; i < paneCount; i++) {
-          if (i > 0) children.add(_buildDivider(i - 1, panesWidth));
-          children.add(_buildPane(i, panesWidth));
+          if (i > 0) row.add(_buildDividerVisual(i - 1));
+          row.add(SizedBox(
+            width: widths[i],
+            child: widget.controller.pageAt(i),
+          ));
         }
         // Absorbs any slack when the pages' widths don't fill the row.
-        children.add(const Spacer());
-        return Row(children: children);
+        row.add(const Spacer());
+
+        // The drag areas are overlaid instead of wrapping the visual: that
+        // decouples "how big the divider looks" from "how easy it is to
+        // grab" without either one distorting the layout.
+        //
+        // Offsets accumulate from the row's leading edge — the right edge
+        // under RTL — so they are measured with `start`, not `left`.
+        final textDirection = Directionality.of(context);
+        final handles = <Widget>[];
+        var offset = 0.0;
+        for (var i = 0; i < paneCount - 1; i++) {
+          offset += widths[i];
+          handles.add(_buildDragHandle(
+            i,
+            offset + widget.dividerWidth / 2,
+            panesWidth,
+            textDirection,
+          ));
+          offset += widget.dividerWidth;
+        }
+
+        return Stack(
+          // The row keeps sizing the view exactly as it did before the
+          // handles were added.
+          fit: StackFit.passthrough,
+          children: [Row(children: row), ...handles],
+        );
       },
     );
   }
 
-  Widget _buildPane(int index, double panesWidth) {
-    final fraction = _fractions[index];
+  Widget _buildDividerVisual(int dividerIndex) {
+    final builder = widget.dividerBuilder;
+    // Fixed slot (dividerWidth × full height) keeps the layout math stable
+    // regardless of what the builder paints inside.
     return SizedBox(
-      width: fraction * panesWidth,
-      child: widget.controller.pageAt(index),
+      width: widget.dividerWidth,
+      height: double.infinity,
+      child: builder != null
+          ? builder(context, dividerIndex)
+          : Container(color: widget.dividerColor),
     );
   }
 
-  Widget _buildDivider(int dividerIndex, double panesWidth) {
-    final builder = widget.dividerBuilder;
-    final Widget child;
-    if (builder != null) {
-      child = builder(context, dividerIndex);
-    } else {
-      child = Container(color: widget.dividerColor);
-    }
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onHorizontalDragStart: (details) =>
-          _handleDragStart(dividerIndex, details.globalPosition.dx),
-      onHorizontalDragUpdate: (details) =>
-          _handleDragUpdate(panesWidth, details.globalPosition.dx),
-      onHorizontalDragEnd: (_) => _handleDragEnd(),
-      onHorizontalDragCancel: _handleDragEnd,
-      // Fixed slot (dividerWidth × full height) keeps the layout math
-      // stable regardless of what the builder paints inside.
-      child: SizedBox(
-        width: widget.dividerWidth,
-        height: double.infinity,
-        child: child,
+  Widget _buildDragHandle(
+    int dividerIndex,
+    double centerFromStart,
+    double panesWidth,
+    TextDirection textDirection,
+  ) {
+    final hitWidth = math.max(widget.dividerWidth, widget.dividerHitWidth);
+    return Positioned.directional(
+      textDirection: textDirection,
+      start: centerFromStart - hitWidth / 2,
+      top: 0,
+      bottom: 0,
+      width: hitWidth,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.resizeColumn,
+        // Translucent, so the pane content and the divider's own visual keep
+        // receiving pointer and hover events under the handle.
+        opaque: false,
+        hitTestBehavior: HitTestBehavior.translucent,
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onHorizontalDragStart: (details) =>
+              _handleDragStart(dividerIndex, details.globalPosition.dx),
+          onHorizontalDragUpdate: (details) => _handleDragUpdate(
+            panesWidth,
+            details.globalPosition.dx,
+            textDirection,
+          ),
+          onHorizontalDragEnd: (_) => _handleDragEnd(),
+          onHorizontalDragCancel: _handleDragEnd,
+        ),
       ),
     );
   }
 
-  double _sumFractions(int from, int to) {
-    var sum = 0.0;
-    for (var i = from; i <= to; i++) {
-      sum += _fractions[i];
-    }
-    return sum;
-  }
-
-  /// Valid range for the divider's left-total fraction, given the min/max
-  /// widths of EVERY pane on each side (not just the adjacent ones): the
-  /// divider can't push the left group below their combined minimums nor
-  /// above their combined maximums. Conflicting constraints degrade to
-  /// (0, 1) — free drag.
-  ({double lower, double upper}) _dividerBounds(
-    int dividerIndex,
+  /// Per-pane width limits in pixels.
+  ///
+  /// Minimums that cannot all fit are dropped: enforcing them would leave
+  /// every pane already below its floor with nothing to give, freezing the
+  /// divider. Dropping them lets the drag move freely instead.
+  ({List<double> min, List<double> max}) _limits(
+    int count,
     double panesWidth,
   ) {
-    var leftMin = 0.0;
-    var leftMax = 0.0;
-    for (var i = 0; i <= dividerIndex; i++) {
-      final page = widget.controller.pageAt(i);
-      leftMin += (VitMultiPanePage.minWidthOf(page) ?? 0) / panesWidth;
-      leftMax +=
-          (VitMultiPanePage.maxWidthOf(page) ?? double.infinity) / panesWidth;
+    final min = List<double>.generate(count, (i) {
+      return VitMultiPanePage.minWidthOf(widget.controller.pageAt(i)) ?? 0.0;
+    });
+    final max = List<double>.generate(count, (i) {
+      final value =
+          VitMultiPanePage.maxWidthOf(widget.controller.pageAt(i)) ??
+              double.infinity;
+      return math.max(value, min[i]);
+    });
+    if (min.fold<double>(0, (a, b) => a + b) > panesWidth + _epsilon) {
+      return (min: List<double>.filled(count, 0), max: max);
     }
-    var rightMin = 0.0;
-    var rightMax = 0.0;
-    for (var i = dividerIndex + 1; i < _fractions.length; i++) {
-      final page = widget.controller.pageAt(i);
-      rightMin += (VitMultiPanePage.minWidthOf(page) ?? 0) / panesWidth;
-      rightMax +=
-          (VitMultiPanePage.maxWidthOf(page) ?? double.infinity) / panesWidth;
-    }
+    return (min: min, max: max);
+  }
 
-    final lower = math.max(leftMin, 1 - rightMax);
-    final upper = math.min(leftMax, 1 - rightMin);
-    if (lower > upper || !lower.isFinite || !upper.isFinite) {
-      return (lower: 0.0, upper: 1.0);
+  /// Indices from [from] down to 0 — panes to the left of a divider, nearest
+  /// first.
+  List<int> _towardStart(int from) =>
+      List<int>.generate(from + 1, (i) => from - i);
+
+  /// Indices from [from] up to [count] - 1 — panes to the right of a
+  /// divider, nearest first.
+  List<int> _towardEnd(int from, int count) =>
+      List<int>.generate(math.max(0, count - from), (i) => from + i);
+
+  /// Total room available across [order], per [headroom].
+  double _totalHeadroom(List<int> order, double Function(int i) headroom) {
+    var total = 0.0;
+    for (final i in order) {
+      final room = headroom(i);
+      if (room.isInfinite) return double.infinity;
+      if (room > 0) total += room;
     }
-    return (lower: lower, upper: upper);
+    return total;
+  }
+
+  /// Adds `sign * amount` pixels across [order], giving each pane as much as
+  /// its [headroom] allows before moving on to the next one. Visiting the
+  /// panes nearest the divider first is what makes a drag feel local: the
+  /// neighbour resizes alone, and the panes beyond it only start moving once
+  /// it has hit its own limit.
+  void _shift(
+    List<int> order,
+    List<double> widths,
+    double amount,
+    double sign,
+    double Function(int i) headroom,
+  ) {
+    var remaining = amount;
+    for (final i in order) {
+      if (remaining <= _epsilon) return;
+      final step = math.min(remaining, headroom(i));
+      if (step <= 0) continue;
+      widths[i] += sign * step;
+      remaining -= step;
+    }
   }
 
   void _handleDragStart(int dividerIndex, double globalX) {
     _activeDivider = dividerIndex;
-    _dragStartLeftTotal = _sumFractions(0, dividerIndex);
     _dragStartX = globalX;
+    // Snapshotted as fractions, not pixels, so a window resize mid-drag
+    // rescales the grabbed layout instead of stretching it.
+    _dragStartFractions = List<double>.of(_fractions);
   }
 
-  void _handleDragUpdate(double panesWidth, double globalX) {
+  void _handleDragUpdate(
+    double panesWidth,
+    double globalX,
+    TextDirection textDirection,
+  ) {
     final dividerIndex = _activeDivider;
-    if (dividerIndex == null || dividerIndex + 1 >= _fractions.length) return;
-    if (panesWidth <= 0) return;
+    if (dividerIndex == null || panesWidth <= 0) return;
+    final count = _dragStartFractions.length;
+    if (count != _fractions.length || dividerIndex + 1 >= count) return;
 
-    final bounds = _dividerBounds(dividerIndex, panesWidth);
-    final startValid = _dragStartLeftTotal >= bounds.lower &&
-        _dragStartLeftTotal <= bounds.upper;
+    final limits = _limits(count, panesWidth);
+    final widths = List<double>.generate(
+      count,
+      (i) => _dragStartFractions[i] * panesWidth,
+    );
 
-    var newLeftTotal = _dragStartLeftTotal + (globalX - _dragStartX) / panesWidth;
-    if (startValid) {
-      // Normal case: the divider stays inside its valid range.
-      newLeftTotal = newLeftTotal.clamp(bounds.lower, bounds.upper).toDouble();
-    } else if (_dragStartLeftTotal < bounds.lower) {
-      // Layout can't fit the minimums: never snap to the boundary — cap at
-      // the top so the divider can cross into the valid zone freely.
-      newLeftTotal = math.min(newLeftTotal, bounds.upper);
-    } else {
-      // Mirror case: start above the valid range.
-      newLeftTotal = math.max(newLeftTotal, bounds.lower);
+    // Absolute travel since the grab — not a per-frame increment — so the
+    // divider lands exactly where the pointer is, at pixel granularity.
+    // Under RTL the panes run right-to-left, so moving right eats into the
+    // leading pane rather than growing it.
+    final delta = (globalX - _dragStartX) *
+        (textDirection == TextDirection.rtl ? -1 : 1);
+    final towardEnd = delta >= 0;
+    final growing = towardEnd
+        ? _towardStart(dividerIndex)
+        : _towardEnd(dividerIndex + 1, count);
+    final shrinking = towardEnd
+        ? _towardEnd(dividerIndex + 1, count)
+        : _towardStart(dividerIndex);
+
+    // Grow and shrink sides are disjoint, so both callbacks read untouched
+    // widths regardless of the order the two _shift calls run in.
+    double growRoom(int i) => limits.max[i] - widths[i];
+    double shrinkRoom(int i) => widths[i] - limits.min[i];
+
+    // One side can be at its limit while the other still has room; moving
+    // the smaller of the two keeps the total width constant.
+    final amount = math.min(
+      delta.abs(),
+      math.min(
+        _totalHeadroom(growing, growRoom),
+        _totalHeadroom(shrinking, shrinkRoom),
+      ),
+    );
+    _shift(growing, widths, amount, 1, growRoom);
+    _shift(shrinking, widths, amount, -1, shrinkRoom);
+
+    // Recomputed from the snapshot every time, so this is also how a drag
+    // back toward the origin undoes itself exactly.
+    var changed = false;
+    for (var i = 0; i < count; i++) {
+      if ((widths[i] / panesWidth - _fractions[i]).abs() > _epsilon) {
+        changed = true;
+        break;
+      }
     }
-
-    final newRightTotal = 1.0 - newLeftTotal;
-    if (newRightTotal <= 0) return;
-    final leftTotal = _dragStartLeftTotal;
-    final rightTotal = 1.0 - leftTotal;
-    if (leftTotal <= 0 || rightTotal <= 0) return;
+    if (!changed) return;
 
     setState(() {
-      // Redistribute proportionally: every pane on each side of the divider
-      // scales by the same factor, keeping the total at 1.
-      final leftScale = newLeftTotal / leftTotal;
-      for (var i = 0; i <= dividerIndex; i++) {
-        _fractions[i] *= leftScale;
-      }
-      final rightScale = newRightTotal / rightTotal;
-      for (var i = dividerIndex + 1; i < _fractions.length; i++) {
-        _fractions[i] *= rightScale;
+      for (var i = 0; i < count; i++) {
+        _fractions[i] = widths[i] / panesWidth;
       }
     });
   }
 
   void _handleDragEnd() {
     _activeDivider = null;
+    _dragStartFractions = const [];
   }
 }

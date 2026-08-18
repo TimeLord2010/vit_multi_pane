@@ -147,7 +147,6 @@ class _ExampleHomeState extends State<ExampleHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('vit_multi_pane')),
       body: LayoutBuilder(
         builder: (context, constraints) {
           final width = constraints.maxWidth;
@@ -161,11 +160,7 @@ class _ExampleHomeState extends State<ExampleHome> {
                     pageCount: _controller.length,
                     currentIndex: _controller.currentIndex,
                   ),
-                  Expanded(
-                    child: VitMultiPaneView(
-                      controller: _controller,
-                    ),
-                  ),
+                  Expanded(child: VitMultiPaneView(controller: _controller)),
                 ],
               );
             },
@@ -235,10 +230,12 @@ class _DemoPage extends StatefulWidget {
 class _DemoPageState extends State<_DemoPage> {
   // Owned by this State (not rebuilt from widget fields) so typing survives
   // the replaceAt-triggered rebuild that every edit causes.
-  late final _minController =
-      TextEditingController(text: _widthText(widget.minWidth));
-  late final _maxController =
-      TextEditingController(text: _widthText(widget.maxWidth));
+  late final _minController = TextEditingController(
+    text: _widthText(widget.minWidth),
+  );
+  late final _maxController = TextEditingController(
+    text: _widthText(widget.maxWidth),
+  );
 
   static String _widthText(double? value) =>
       value == null ? '' : value.toStringAsFixed(0);
@@ -278,7 +275,11 @@ class _DemoPageState extends State<_DemoPage> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.description_outlined, size: 48, color: widget.color),
+                  Icon(
+                    Icons.description_outlined,
+                    size: 48,
+                    color: widget.color,
+                  ),
                   const SizedBox(height: 12),
                   Text(widget.label, style: theme.textTheme.titleLarge),
                   const SizedBox(height: 4),

@@ -11,6 +11,11 @@ draggable divider between them.
   `VitMultiPanePage` wrapper adds `minWidth` / `maxWidth` that clamp it.
   Style the divider yourself with `dividerBuilder` (color, icon, handle — the
   drag behavior stays in the package).
+- **Pixel-exact drag** — the divider sits under the pointer, one screen pixel
+  per pixel of travel, and a drag moves only the two panes it sits between
+  (spilling onto the ones beyond only once a neighbour reaches its own
+  `minWidth` / `maxWidth`). `dividerHitWidth` (12px by default) sets how wide
+  the grab area is, independently of how thin the divider looks.
 
 ## Usage
 

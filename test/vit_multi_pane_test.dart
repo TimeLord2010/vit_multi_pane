@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vit_multi_pane/vit_multi_pane.dart';
@@ -238,6 +239,230 @@ void main() {
       final after = tester.getSize(pane0Finder).width;
       expect(after, greaterThan(before)); // moved right a little…
       expect(after, lessThan(240)); // …but nowhere near the min boundary
+    });
+  });
+
+  group('VitMultiPaneView drag precision', () {
+    Widget wrap(VitMultiPaneController controller, {double width = 400}) {
+      return MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: width,
+            height: 200,
+            child: VitMultiPaneView(controller: controller),
+          ),
+        ),
+      );
+    }
+
+    /// Presses on the divider to the right of [leftPane].
+    ///
+    /// A mouse drag is recognized after ~1px of travel and that travel is
+    /// then applied in full, so total pointer distance from this press maps
+    /// one-to-one onto pane widths and assertions can be exact. The first
+    /// `moveBy` of a gesture must therefore exceed 1px.
+    Future<TestGesture> grabDivider(
+      WidgetTester tester,
+      Finder leftPane, {
+      double offsetFromCenter = 0,
+    }) async {
+      final viewTop = tester.getTopLeft(find.byType(VitMultiPaneView)).dy;
+      // Default dividerWidth is 4, so its center is 2px past the left pane.
+      final centerX = tester.getTopRight(leftPane).dx + 2;
+      final gesture = await tester.startGesture(
+        Offset(centerX + offsetFromCenter, viewTop + 100),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      return gesture;
+    }
+
+    double widthOf(WidgetTester tester, String key) =>
+        tester.getSize(find.byKey(Key(key))).width;
+
+    testWidgets('divider follows the pointer across many small updates',
+        (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')));
+
+      await tester.pumpWidget(wrap(controller));
+      final before = widthOf(tester, 'pane0'); // (400-4)/2 = 198
+
+      final gesture = await grabDivider(tester, find.byKey(const Key('pane0')));
+
+      // 20 updates × 2px. Scaling the *current* widths by a factor derived
+      // from the *start* widths compounded on every update, so a drag this
+      // short used to blow past the layout limit and pin itself there.
+      for (var i = 0; i < 20; i++) {
+        await gesture.moveBy(const Offset(2, 0));
+        await tester.pump();
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(widthOf(tester, 'pane0'), closeTo(before + 40, 0.5));
+      expect(widthOf(tester, 'pane1'), closeTo(before - 40, 0.5));
+    });
+
+    testWidgets('a one-pixel drag moves the divider one pixel',
+        (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')));
+
+      await tester.pumpWidget(wrap(controller));
+
+      final gesture = await grabDivider(tester, find.byKey(const Key('pane0')));
+      // Past the recognizer's 1px threshold, then move one pixel at a time.
+      await gesture.moveBy(const Offset(2, 0));
+      await tester.pump();
+      final before = widthOf(tester, 'pane0');
+
+      await gesture.moveBy(const Offset(1, 0));
+      await tester.pump();
+      expect(widthOf(tester, 'pane0'), closeTo(before + 1, 0.01));
+
+      await gesture.moveBy(const Offset(1, 0));
+      await tester.pump();
+      expect(widthOf(tester, 'pane0'), closeTo(before + 2, 0.01));
+      await gesture.up();
+    });
+
+    testWidgets('dragging back to the grab point restores the widths',
+        (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')));
+
+      await tester.pumpWidget(wrap(controller));
+      final before = widthOf(tester, 'pane0');
+
+      final gesture = await grabDivider(tester, find.byKey(const Key('pane0')));
+      await gesture.moveBy(const Offset(50, 0));
+      await tester.pump();
+      expect(widthOf(tester, 'pane0'), closeTo(before + 50, 0.5));
+
+      await gesture.moveBy(const Offset(-50, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(widthOf(tester, 'pane0'), closeTo(before, 0.5));
+    });
+
+    testWidgets('a drag only resizes the two panes it sits between',
+        (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')))
+        ..add(const SizedBox(key: Key('pane2')));
+
+      await tester.pumpWidget(wrap(controller));
+      final before = widthOf(tester, 'pane0'); // (400-8)/3 ≈ 130.67
+
+      final gesture = await grabDivider(tester, find.byKey(const Key('pane0')));
+      await gesture.moveBy(const Offset(30, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(widthOf(tester, 'pane0'), closeTo(before + 30, 0.5));
+      expect(widthOf(tester, 'pane1'), closeTo(before - 30, 0.5));
+      // The far pane stays put: dividers move one boundary, not all of them.
+      expect(widthOf(tester, 'pane2'), closeTo(before, 0.5));
+    });
+
+    testWidgets('the drag cascades past a neighbour that hit its minimum',
+        (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const VitMultiPanePage(
+          key: Key('pane1'),
+          minWidth: 100,
+          child: SizedBox(),
+        ))
+        ..add(const SizedBox(key: Key('pane2')));
+
+      await tester.pumpWidget(wrap(controller));
+      final before = widthOf(tester, 'pane0'); // ≈130.67
+
+      // 60px right: pane1 can only give up ~30.67 before hitting its 100px
+      // minimum, so pane2 covers the rest instead of the drag stalling.
+      final gesture = await grabDivider(tester, find.byKey(const Key('pane0')));
+      await gesture.moveBy(const Offset(60, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(widthOf(tester, 'pane0'), closeTo(before + 60, 0.5));
+      expect(widthOf(tester, 'pane1'), closeTo(100, 0.5));
+      expect(widthOf(tester, 'pane2'), closeTo(before - 29.33, 0.5));
+    });
+
+    testWidgets('the divider is grabbable a few pixels off its visual',
+        (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')));
+
+      await tester.pumpWidget(wrap(controller));
+      final before = widthOf(tester, 'pane0');
+
+      // 5px off center is outside the 4px visual but inside the 12px hit
+      // area — a hairline divider still needs to be easy to catch.
+      final gesture = await grabDivider(
+        tester,
+        find.byKey(const Key('pane0')),
+        offsetFromCenter: 5,
+      );
+      await gesture.moveBy(const Offset(25, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(widthOf(tester, 'pane0'), closeTo(before + 25, 0.5));
+    });
+
+    testWidgets('under RTL the drag follows the pointer the other way',
+        (tester) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')));
+
+      await tester.pumpWidget(MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Center(
+            child: SizedBox(
+              width: 400,
+              height: 200,
+              child: VitMultiPaneView(controller: controller),
+            ),
+          ),
+        ),
+      ));
+
+      // pane0 is the leading pane, so under RTL it sits on the right and its
+      // divider is on its LEFT.
+      final pane0 = find.byKey(const Key('pane0'));
+      final before = widthOf(tester, 'pane0');
+      final viewTop = tester.getTopLeft(find.byType(VitMultiPaneView)).dy;
+      final dividerCenter = tester.getTopLeft(pane0).dx - 2;
+
+      final gesture = await tester.startGesture(
+        Offset(dividerCenter, viewTop + 100),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      // Dragging left grows the leading pane; dragging right would shrink it.
+      await gesture.moveBy(const Offset(-30, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(widthOf(tester, 'pane0'), closeTo(before + 30, 0.5));
+      expect(widthOf(tester, 'pane1'), closeTo(before - 30, 0.5));
     });
   });
 }
