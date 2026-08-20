@@ -15,8 +15,8 @@ class VitMultiPaneView extends StatefulWidget {
     this.dividerColor = const Color(0xFFE0E0E0),
     this.dividerBuilder,
     this.initialProportions,
-  })  : assert(dividerWidth >= 0),
-        assert(dividerHitWidth >= 0);
+  }) : assert(dividerWidth >= 0),
+       assert(dividerHitWidth >= 0);
 
   /// The controller holding the pages. Required.
   final VitMultiPaneController controller;
@@ -63,8 +63,19 @@ class VitMultiPaneView extends StatefulWidget {
   /// provided, the returned widget is placed in a box of [dividerWidth] ×
   /// full height — the drag behavior stays in the package (see
   /// [dividerHitWidth]), the look is fully yours (color, icon, handle, …).
-  final Widget Function(BuildContext context, int dividerIndex)?
-      dividerBuilder;
+  ///
+  /// `isMouseOver` reflects the hover state of the drag handle — the
+  /// [dividerHitWidth]-wide strip, not just the (usually much thinner)
+  /// visual itself. Tracking hover on the visual alone would leave it
+  /// looking unresponsive while the pointer is still over the wider hit
+  /// area, even though the cursor has already changed and the drag is
+  /// available.
+  final Widget Function(
+    BuildContext context,
+    int dividerIndex,
+    bool isMouseOver,
+  )?
+  dividerBuilder;
 
   @override
   State<VitMultiPaneView> createState() => _VitMultiPaneViewState();
@@ -92,6 +103,12 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
   int? _activeDivider;
   List<double> _dragStartFractions = const [];
   double _dragStartX = 0;
+
+  /// Index of the divider whose drag handle the pointer is currently over,
+  /// or null. Tracked on the handle (see [VitMultiPaneView.dividerHitWidth])
+  /// rather than on the visual, so [_buildDividerVisual] can report hover
+  /// as soon as the cursor itself would already have changed.
+  int? _hoveredDivider;
 
   @override
   void initState() {
@@ -170,8 +187,8 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
   /// (shrunk) layout and lets the drag move freely.
   void _syncFractions(int count, double panesWidth) {
     if (_fractions.length != count) {
-      _fractions = _initialFractions(count) ??
-          List<double>.filled(count, 1 / count);
+      _fractions =
+          _initialFractions(count) ?? List<double>.filled(count, 1 / count);
     }
     _laidOut = true;
     if (panesWidth <= 0) return;
@@ -233,11 +250,12 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
 
         final row = <Widget>[];
         for (var i = 0; i < paneCount; i++) {
-          if (i > 0) row.add(_buildDividerVisual(i - 1));
-          row.add(SizedBox(
-            width: widths[i],
-            child: widget.controller.pageAt(i),
-          ));
+          if (i > 0) {
+            row.add(_buildDividerVisual(i - 1, _hoveredDivider == i - 1));
+          }
+          row.add(
+            SizedBox(width: widths[i], child: widget.controller.pageAt(i)),
+          );
         }
         // Absorbs any slack when the pages' widths don't fill the row.
         row.add(const Spacer());
@@ -253,12 +271,14 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
         var offset = 0.0;
         for (var i = 0; i < paneCount - 1; i++) {
           offset += widths[i];
-          handles.add(_buildDragHandle(
-            i,
-            offset + widget.dividerWidth / 2,
-            panesWidth,
-            textDirection,
-          ));
+          handles.add(
+            _buildDragHandle(
+              i,
+              offset + widget.dividerWidth / 2,
+              panesWidth,
+              textDirection,
+            ),
+          );
           offset += widget.dividerWidth;
         }
 
@@ -266,13 +286,16 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
           // The row keeps sizing the view exactly as it did before the
           // handles were added.
           fit: StackFit.passthrough,
-          children: [Row(children: row), ...handles],
+          children: [
+            Row(children: row),
+            ...handles,
+          ],
         );
       },
     );
   }
 
-  Widget _buildDividerVisual(int dividerIndex) {
+  Widget _buildDividerVisual(int dividerIndex, bool isMouseOver) {
     final builder = widget.dividerBuilder;
     // Fixed slot (dividerWidth × full height) keeps the layout math stable
     // regardless of what the builder paints inside.
@@ -280,7 +303,7 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
       width: widget.dividerWidth,
       height: double.infinity,
       child: builder != null
-          ? builder(context, dividerIndex)
+          ? builder(context, dividerIndex, isMouseOver)
           : Container(color: widget.dividerColor),
     );
   }
@@ -304,6 +327,12 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
         // receiving pointer and hover events under the handle.
         opaque: false,
         hitTestBehavior: HitTestBehavior.translucent,
+        onEnter: (_) => setState(() => _hoveredDivider = dividerIndex),
+        onExit: (_) {
+          if (_hoveredDivider == dividerIndex) {
+            setState(() => _hoveredDivider = null);
+          }
+        },
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
           onHorizontalDragStart: (details) =>
@@ -325,17 +354,14 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
   /// Minimums that cannot all fit are dropped: enforcing them would leave
   /// every pane already below its floor with nothing to give, freezing the
   /// divider. Dropping them lets the drag move freely instead.
-  ({List<double> min, List<double> max}) _limits(
-    int count,
-    double panesWidth,
-  ) {
+  ({List<double> min, List<double> max}) _limits(int count, double panesWidth) {
     final min = List<double>.generate(count, (i) {
       return VitMultiPanePage.minWidthOf(widget.controller.pageAt(i)) ?? 0.0;
     });
     final max = List<double>.generate(count, (i) {
       final value =
           VitMultiPanePage.maxWidthOf(widget.controller.pageAt(i)) ??
-              double.infinity;
+          double.infinity;
       return math.max(value, min[i]);
     });
     if (min.fold<double>(0, (a, b) => a + b) > panesWidth + _epsilon) {
@@ -415,8 +441,8 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
     // divider lands exactly where the pointer is, at pixel granularity.
     // Under RTL the panes run right-to-left, so moving right eats into the
     // leading pane rather than growing it.
-    final delta = (globalX - _dragStartX) *
-        (textDirection == TextDirection.rtl ? -1 : 1);
+    final delta =
+        (globalX - _dragStartX) * (textDirection == TextDirection.rtl ? -1 : 1);
     final towardEnd = delta >= 0;
     final growing = towardEnd
         ? _towardStart(dividerIndex)

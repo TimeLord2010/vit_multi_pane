@@ -94,7 +94,7 @@ VitMultiPaneView(
   controller: controller,
   dividerWidth: 6,
   dividerHitWidth: 16,
-  dividerBuilder: (context, dividerIndex) => ColoredBox(
+  dividerBuilder: (context, dividerIndex, isMouseOver) => ColoredBox(
     color: Colors.grey.shade200,
     child: Center(
       child: Container(width: 2, height: 40, color: Colors.grey),
@@ -107,3 +107,7 @@ VitMultiPaneView(
 da espessura visual: uma divisória de 1px continua fácil de agarrar. Essa área
 é sobreposta e translúcida ao hit-test — ela não ocupa espaço no layout nem
 engole os toques e hovers do conteúdo das páginas embaixo dela.
+
+`isMouseOver` reflete o hover dessa área de pega, não só do visual fino
+desenhado por `dividerBuilder` — assim o feedback visual já aparece assim que
+o cursor muda, em vez de só quando o mouse chega bem no centro da linha.

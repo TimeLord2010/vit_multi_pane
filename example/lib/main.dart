@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vit_multi_pane/vit_multi_pane.dart';
-import 'package:vit_multi_pane_example/mouse_hover_listener.dart';
 import 'package:vit_multi_pane_example/proportions_dialog.dart';
 
 void main() {
@@ -78,32 +77,28 @@ class _ExampleHomeState extends State<ExampleHome> {
                         double.infinity,
                         double.infinity,
                       ],
-                      dividerBuilder: (context, dividerIndex) {
-                        return MouseHoverListener(
-                          builder: (context, isMouseOver, child) {
-                            return Container(
-                              width: 6,
+                      dividerBuilder: (context, dividerIndex, isMouseOver) {
+                        return Container(
+                          width: 6,
+                          decoration: BoxDecoration(
+                            color: Color.fromARGB(255, 233, 233, 233),
+                          ),
+                          child: Center(
+                            child: AnimatedContainer(
+                              duration: Duration(milliseconds: 150),
+                              width: 2,
+                              height: 40,
                               decoration: BoxDecoration(
-                                color: Color.fromARGB(255, 233, 233, 233),
-                              ),
-                              child: Center(
-                                child: AnimatedContainer(
-                                  duration: Duration(milliseconds: 150),
-                                  width: 2,
-                                  height: 40,
-                                  decoration: BoxDecoration(
-                                    borderRadius: .circular(20),
-                                    color: Color.fromARGB(
-                                      isMouseOver ? 255 : 100,
-                                      145,
-                                      145,
-                                      145,
-                                    ),
-                                  ),
+                                borderRadius: .circular(20),
+                                color: Color.fromARGB(
+                                  isMouseOver ? 255 : 100,
+                                  145,
+                                  145,
+                                  145,
                                 ),
                               ),
-                            );
-                          },
+                            ),
+                          ),
                         );
                       },
                     ),
@@ -138,9 +133,7 @@ class _ExampleHomeState extends State<ExampleHome> {
     final messenger = ScaffoldMessenger.of(context);
     final request = await showProportionsDialog(
       context,
-      pageLabels: [
-        for (var i = 0; i < _controller.length; i++) _labelAt(i),
-      ],
+      pageLabels: [for (var i = 0; i < _controller.length; i++) _labelAt(i)],
     );
     if (request == null) return;
 

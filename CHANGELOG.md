@@ -1,3 +1,11 @@
+## 2.0.0
+
+* **Quebra de compatibilidade** `VitMultiPaneView.dividerBuilder` agora recebe
+  um terceiro parâmetro, `isMouseOver`. Ele reflete o hover da área de pega
+  inteira (`dividerHitWidth`), não só da linha visual fina — assim divisórias
+  customizadas já mudam de aparência quando o cursor muda, sem esperar o
+  mouse chegar bem no centro.
+
 ## 1.1.0
 
 * **Adicionado** `VitMultiPaneController.setProportions`: redistribua o
