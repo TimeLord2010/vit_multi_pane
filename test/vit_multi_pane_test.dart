@@ -222,9 +222,9 @@ void main() {
               child: VitMultiPaneView(
                 controller: controller,
                 dividerWidth: 8,
-                dividerBuilder: (context, index, isMouseOver) => ColoredBox(
+                dividerBuilder: (context, info) => ColoredBox(
                   key: const Key('custom-divider'),
-                  color: isMouseOver ? Colors.orange : Colors.amber,
+                  color: info.isMouseOver ? Colors.orange : Colors.amber,
                 ),
               ),
             ),
@@ -269,9 +269,9 @@ void main() {
                 controller: controller,
                 dividerWidth: 2,
                 dividerHitWidth: 40,
-                dividerBuilder: (context, index, isMouseOver) => ColoredBox(
+                dividerBuilder: (context, info) => ColoredBox(
                   key: const Key('custom-divider'),
-                  color: isMouseOver ? Colors.orange : Colors.amber,
+                  color: info.isMouseOver ? Colors.orange : Colors.amber,
                 ),
               ),
             ),
@@ -303,6 +303,63 @@ void main() {
       expect(colorOf(), Colors.orange);
 
       await gesture.moveTo(const Offset(10, 10));
+      await tester.pump();
+      expect(colorOf(), Colors.amber);
+    });
+
+    testWidgets('dividerBuilder reports isDragging while dragging', (
+      tester,
+    ) async {
+      final controller = VitMultiPaneController()
+        ..add(const SizedBox(key: Key('pane0')))
+        ..add(const SizedBox(key: Key('pane1')));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 400,
+              height: 200,
+              child: VitMultiPaneView(
+                controller: controller,
+                dividerWidth: 8,
+                dividerBuilder: (context, info) => ColoredBox(
+                  key: const Key('custom-divider'),
+                  color: info.isDragging ? Colors.red : Colors.amber,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      Color colorOf() =>
+          (tester.widget(find.byKey(const Key('custom-divider'))) as ColoredBox)
+              .color;
+      expect(colorOf(), Colors.amber);
+
+      final pane0Finder = find.byKey(const Key('pane0'));
+      final viewTop = tester.getTopLeft(find.byType(VitMultiPaneView)).dy;
+      final dividerX = tester.getTopRight(pane0Finder).dx + 4;
+
+      final gesture = await tester.startGesture(
+        Offset(dividerX, viewTop + 100),
+      );
+      // With no competing recognizers the arena resolves on pointer down —
+      // the divider is already "dragging" the moment it is pressed.
+      await tester.pump();
+      expect(colorOf(), Colors.red);
+
+      await gesture.moveBy(const Offset(40, 0));
+      await tester.pump();
+      expect(colorOf(), Colors.red);
+
+      // Still held: isDragging stays true across updates.
+      await gesture.moveBy(const Offset(-20, 0));
+      await tester.pump();
+      expect(colorOf(), Colors.red);
+
+      await gesture.up();
       await tester.pump();
       expect(colorOf(), Colors.amber);
     });

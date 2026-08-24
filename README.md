@@ -94,7 +94,7 @@ VitMultiPaneView(
   controller: controller,
   dividerWidth: 6,
   dividerHitWidth: 16,
-  dividerBuilder: (context, dividerIndex, isMouseOver) => ColoredBox(
+  dividerBuilder: (context, info) => ColoredBox(
     color: Colors.grey.shade200,
     child: Center(
       child: Container(width: 2, height: 40, color: Colors.grey),
@@ -102,6 +102,10 @@ VitMultiPaneView(
   ),
 );
 ```
+
+O builder recebe `(context, info)` — um `DividerInfo` com `dividerIndex`
+(qual divisória), `isMouseOver` (hover) e `isDragging` (arraste em curso), para
+você mudar a aparência em cada estado.
 
 `dividerHitWidth` (12px por padrão) é a largura da área de pega, independente
 da espessura visual: uma divisória de 1px continua fácil de agarrar. Essa área
@@ -111,3 +115,5 @@ engole os toques e hovers do conteúdo das páginas embaixo dela.
 `isMouseOver` reflete o hover dessa área de pega, não só do visual fino
 desenhado por `dividerBuilder` — assim o feedback visual já aparece assim que
 o cursor muda, em vez de só quando o mouse chega bem no centro da linha.
+`isDragging` fica verdadeiro do primeiro frame do arraste até o último, para o
+estado visual acompanhar o gesto.

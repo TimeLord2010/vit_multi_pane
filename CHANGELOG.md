@@ -1,3 +1,12 @@
+## 3.0.0
+
+* **Quebra de compatibilidade** `VitMultiPaneView.dividerBuilder` agora recebe
+  `(context, DividerInfo)` em vez de três parâmetros posicionais. `DividerInfo`
+  agrupa `dividerIndex`, `isMouseOver` e o novo `isDragging` — verdadeiro do
+  primeiro frame do arraste até o último, permitindo feedback visual de arraste
+  em divisórias customizadas. Flags futuras viram campos da classe, sem quebrar
+  a assinatura de novo.
+
 ## 2.0.0
 
 * **Quebra de compatibilidade** `VitMultiPaneView.dividerBuilder` agora recebe

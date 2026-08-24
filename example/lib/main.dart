@@ -77,7 +77,7 @@ class _ExampleHomeState extends State<ExampleHome> {
                         double.infinity,
                         double.infinity,
                       ],
-                      dividerBuilder: (context, dividerIndex, isMouseOver) {
+                      dividerBuilder: (context, info) {
                         return Container(
                           width: 6,
                           decoration: BoxDecoration(
@@ -86,12 +86,16 @@ class _ExampleHomeState extends State<ExampleHome> {
                           child: Center(
                             child: AnimatedContainer(
                               duration: Duration(milliseconds: 150),
-                              width: 2,
+                              // A alça engrossa enquanto a divisória é
+                              // arrastada (info.isDragging).
+                              width: info.isDragging ? 4 : 2,
                               height: 40,
                               decoration: BoxDecoration(
                                 borderRadius: .circular(20),
                                 color: Color.fromARGB(
-                                  isMouseOver ? 255 : 100,
+                                  (info.isMouseOver || info.isDragging)
+                                      ? 255
+                                      : 100,
                                   145,
                                   145,
                                   145,

@@ -16,5 +16,6 @@ import 'package:flutter/widgets.dart';
 import 'pane_proportions.dart';
 import 'vit_multi_pane_page.dart';
 
+part 'divider_info.dart';
 part 'vit_multi_pane_controller.dart';
 part 'vit_multi_pane_view.dart';

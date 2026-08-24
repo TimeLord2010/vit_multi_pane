@@ -64,17 +64,18 @@ class VitMultiPaneView extends StatefulWidget {
   /// full height — the drag behavior stays in the package (see
   /// [dividerHitWidth]), the look is fully yours (color, icon, handle, …).
   ///
+  /// The [DividerInfo] argument carries the interaction state: which
+  /// divider this is ([DividerInfo.dividerIndex]), whether the pointer is
+  /// over the drag handle ([DividerInfo.isMouseOver]) and whether it is
+  /// being dragged right now ([DividerInfo.isDragging]).
+  ///
   /// `isMouseOver` reflects the hover state of the drag handle — the
   /// [dividerHitWidth]-wide strip, not just the (usually much thinner)
   /// visual itself. Tracking hover on the visual alone would leave it
   /// looking unresponsive while the pointer is still over the wider hit
   /// area, even though the cursor has already changed and the drag is
   /// available.
-  final Widget Function(
-    BuildContext context,
-    int dividerIndex,
-    bool isMouseOver,
-  )?
+  final Widget Function(BuildContext context, DividerInfo info)?
   dividerBuilder;
 
   @override
@@ -251,7 +252,7 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
         final row = <Widget>[];
         for (var i = 0; i < paneCount; i++) {
           if (i > 0) {
-            row.add(_buildDividerVisual(i - 1, _hoveredDivider == i - 1));
+            row.add(_buildDividerVisual(i - 1));
           }
           row.add(
             SizedBox(width: widths[i], child: widget.controller.pageAt(i)),
@@ -295,7 +296,7 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
     );
   }
 
-  Widget _buildDividerVisual(int dividerIndex, bool isMouseOver) {
+  Widget _buildDividerVisual(int dividerIndex) {
     final builder = widget.dividerBuilder;
     // Fixed slot (dividerWidth × full height) keeps the layout math stable
     // regardless of what the builder paints inside.
@@ -303,7 +304,14 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
       width: widget.dividerWidth,
       height: double.infinity,
       child: builder != null
-          ? builder(context, dividerIndex, isMouseOver)
+          ? builder(
+              context,
+              DividerInfo(
+                dividerIndex: dividerIndex,
+                isMouseOver: _hoveredDivider == dividerIndex,
+                isDragging: _activeDivider == dividerIndex,
+              ),
+            )
           : Container(color: widget.dividerColor),
     );
   }
@@ -414,11 +422,15 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
   }
 
   void _handleDragStart(int dividerIndex, double globalX) {
-    _activeDivider = dividerIndex;
-    _dragStartX = globalX;
-    // Snapshotted as fractions, not pixels, so a window resize mid-drag
-    // rescales the grabbed layout instead of stretching it.
-    _dragStartFractions = List<double>.of(_fractions);
+    // Rebuild right away so the builder sees isDragging on the very frame
+    // the drag begins, not only after the first update event.
+    setState(() {
+      _activeDivider = dividerIndex;
+      _dragStartX = globalX;
+      // Snapshotted as fractions, not pixels, so a window resize mid-drag
+      // rescales the grabbed layout instead of stretching it.
+      _dragStartFractions = List<double>.of(_fractions);
+    });
   }
 
   void _handleDragUpdate(
@@ -487,7 +499,12 @@ class _VitMultiPaneViewState extends State<VitMultiPaneView> {
   }
 
   void _handleDragEnd() {
-    _activeDivider = null;
-    _dragStartFractions = const [];
+    // Rebuild so the builder drops isDragging on the frame the drag ends
+    // (the last drag update already rebuilt with it true).
+    if (!mounted) return;
+    setState(() {
+      _activeDivider = null;
+      _dragStartFractions = const [];
+    });
   }
 }
